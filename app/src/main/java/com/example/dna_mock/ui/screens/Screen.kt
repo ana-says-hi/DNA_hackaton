@@ -1,4 +1,4 @@
-package com.example.dna_mock
+package com.example.dna_mock.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,10 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.dna_mock.ui.screens.AccountScreen
-import com.example.dna_mock.ui.screens.ChatbotScreen
-import com.example.dna_mock.ui.screens.HomeScreen
-import com.example.dna_mock.ui.screens.MoreScreen
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
 

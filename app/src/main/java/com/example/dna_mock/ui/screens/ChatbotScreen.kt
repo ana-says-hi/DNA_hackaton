@@ -23,6 +23,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dna_mock.notifications.NotificationInbox.items
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
 import com.example.dna_mock.ui.viewmodel.ChatMessage
@@ -35,6 +36,7 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val listState = rememberLazyListState()
+    var menuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel.messages.size) {
         if (viewModel.messages.isNotEmpty()) {
@@ -88,21 +90,60 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = BackgroundColor) {
-                Spacer(Modifier.height(12.dp))
+            ModalDrawerSheet(
+                drawerContainerColor = BackgroundColor
+            ) {
+                Spacer(
+                    Modifier.height(12.dp)
+                )
                 Text(
                     "Chat History",
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.titleLarge,
                     color = BrandColor
                 )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = BrandColor.copy(alpha = 0.1f))
-                NavigationDrawerItem(
-                    label = { Text("Previous Chat: Security Check") },
-                    selected = false,
-                    onClick = { scope.launch { drawerState.close() } },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = BrandColor.copy(alpha = 0.1f)
                 )
+                if (viewModel.chatHistory.isEmpty()) {
+                    Text(
+                        text = "No previous chats",
+                        modifier = Modifier.padding(16.dp),
+                        color = Color.Gray
+                    )
+                } else {
+                    viewModel.chatHistory.forEach { chat ->
+                        NavigationDrawerItem(
+                            label = {
+                                Text(
+                                    text = chat.title,
+                                    maxLines = 1
+                                )
+                            },
+
+                            selected = chat.id == viewModel.conversationId,
+
+                            onClick = {
+                                viewModel.openChat(chat)
+                                scope.launch {
+                                    drawerState.close()
+                                }
+                            },
+
+                            modifier = Modifier.padding(
+                                NavigationDrawerItemDefaults.ItemPadding
+                            ),
+
+                            icon = {
+                                Icon(
+                                    Icons.Default.Chat,
+                                    contentDescription = null
+                                )
+                            }
+                        )
+                    }
+                }
             }
         }
     ) {
@@ -110,13 +151,82 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text(viewModel.chatTitle, color = BackgroundColor) },
+                    title = {
+                        Text(
+                            viewModel.chatTitle,
+                            color = BackgroundColor
+                        )
+                    },
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "History", tint = BackgroundColor)
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    drawerState.open()
+                                }
+                            }
+                        ) {
+
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = "History",
+                                tint = BackgroundColor
+                            )
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BrandColor)
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                menuExpanded = true
+                            }
+                        ) {
+
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Options",
+                                tint = BackgroundColor
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = {
+                                menuExpanded = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("New Chat") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.newChat()
+                                }
+                            )
+                            DropdownMenuItem(
+
+                                text = {
+                                    Text("Clear Chat")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.clearChat()
+                                }
+                            )
+
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = BrandColor
+                    )
                 )
             },
             containerColor = BackgroundColor

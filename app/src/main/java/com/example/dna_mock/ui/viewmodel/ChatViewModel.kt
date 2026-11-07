@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dna_mock.data.ChatService
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class ChatMessage(
     val text: String,
@@ -16,8 +17,20 @@ data class ChatMessage(
     val rawJson: String? = null
 )
 
+data class ChatHistoryItem(
+    val id: String,
+    val title: String,
+    val messages: List<ChatMessage>
+)
+
 class ChatViewModel : ViewModel() {
     private val chatService = ChatService() // Connects to http://10.0.2.2:8000/
+
+    var conversationId by mutableStateOf(UUID.randomUUID().toString())
+        private set
+
+    var chatHistory by mutableStateOf(listOf<ChatHistoryItem>())
+        private set
 
     var messages by mutableStateOf(listOf(ChatMessage("Hello! How can I help you today with your security check?", false)))
         private set
@@ -49,8 +62,14 @@ class ChatViewModel : ViewModel() {
     }
 
     private fun updateTitle(userMsg: String) {
-        if (messages.size <= 2) {
-            chatTitle = if (userMsg.length > 15) userMsg.take(15) + "..." else userMsg
+
+        if (chatTitle == "New chat") {
+
+            chatTitle =
+                if (userMsg.length > 15)
+                    userMsg.take(15) + "..."
+                else
+                    userMsg
         }
     }
 
@@ -81,5 +100,58 @@ class ChatViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    fun clearChat() {
+
+        messages = listOf(
+            ChatMessage(
+                text = "Hello! How can I help you today with your security check?",
+                isUser = false
+            )
+        )
+
+        chatTitle = "New chat"
+        inputText = ""
+    }
+
+    fun newChat() {
+        if (messages.size > 1) {
+
+            val oldChat = ChatHistoryItem(
+                id = conversationId,
+                title = chatTitle,
+                messages = messages
+            )
+            chatHistory = listOf(oldChat) + chatHistory
+        }
+
+        conversationId = UUID.randomUUID().toString()
+        messages = listOf(
+            ChatMessage(
+                text = "Hello! How can I help you today with your security check?",
+                isUser = false
+            )
+        )
+        chatTitle = "New chat"
+        inputText = ""
+    }
+
+    fun openChat(historyItem: ChatHistoryItem) {
+        if (messages.size > 1) {
+            val current = ChatHistoryItem(
+                id = conversationId,
+                title = chatTitle,
+                messages = messages
+            )
+            chatHistory =
+                listOf(current) + chatHistory.filter {
+                    it.id != current.id
+                }
+        }
+
+        conversationId = historyItem.id
+        messages = historyItem.messages
+        chatTitle = historyItem.title
     }
 }
