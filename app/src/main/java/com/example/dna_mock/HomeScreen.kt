@@ -61,7 +61,7 @@ fun HomeScreen(onTopUpClick: () -> Unit = {}) {
                 ) {
                     Text("DNA Rajaton Prepaid", color = accent, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    Text("044 965 2870", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = Color(0xFF171717))
+                    Text("044 1234 3456", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = Color(0xFF171717))
                     Spacer(Modifier.height(4.dp))
                     Text("Valid until 13.06.2027", color = Color.DarkGray)
                 }

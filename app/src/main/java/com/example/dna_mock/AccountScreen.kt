@@ -68,7 +68,7 @@ fun AccountScreen() {
             Column(Modifier.padding(18.dp)) {
                 Text("DNA Rajaton Prepaid", color = Color(0xFFC81C74), fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(6.dp))
-                Text("044 965 2870", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("044 1234 3456", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Demo account details", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             }
         }
