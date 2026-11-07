@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,14 +37,13 @@ import java.util.Date
 fun AccountScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var hasAccess by remember {
-        mutableStateOf(runCatching { isNotificationReaderEnabled(context) }.getOrDefault(false))
-    }
+    var hasAccess by remember { mutableStateOf(isNotificationReaderEnabled(context)) }
+    var openedNotification by remember { mutableStateOf<NotificationPreview?>(null) }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                hasAccess = runCatching { isNotificationReaderEnabled(context) }.getOrDefault(false)
+                hasAccess = isNotificationReaderEnabled(context)
                 if (hasAccess) NotificationReaderService.refreshIfConnected()
                 else NotificationInbox.replace(emptyList())
             }
@@ -53,33 +51,6 @@ fun AccountScreen() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-
-    AccountScreenContent(
-        hasAccess = hasAccess,
-        notifications = NotificationInbox.items,
-        onRequestPermission = {
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        },
-        onManagePermission = {
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        },
-        onRefresh = { NotificationReaderService.refreshIfConnected() }
-    )
-}
-
-/**
- * Stateless rendering entrypoint: previews never query Android notification settings.
- * The live screen passes the current permission state and active notifications.
- */
-@Composable
-private fun AccountScreenContent(
-    hasAccess: Boolean,
-    notifications: List<NotificationPreview>,
-    onRequestPermission: () -> Unit,
-    onManagePermission: () -> Unit,
-    onRefresh: () -> Unit
-) {
-    var openedNotification by remember { mutableStateOf<NotificationPreview?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -130,7 +101,7 @@ private fun AccountScreenContent(
                 if (!hasAccess) {
                     Button(
                         onClick = {
-                            onRequestPermission()
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandColor)
@@ -149,24 +120,24 @@ private fun AccountScreenContent(
                             modifier = Modifier.weight(1f),
                             color = BrandColor
                         )
-                        IconButton(onClick = { onRefresh() }) {
+                        IconButton(onClick = { NotificationReaderService.refreshIfConnected() }) {
                             Icon(Icons.Outlined.Refresh, contentDescription = "Refresh notifications")
                         }
                     }
                     TextButton(onClick = {
-                        onManagePermission()
+                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                     }) {
                         Text("Manage or revoke notification access")
                     }
-                    if (notifications.isEmpty()) {
+                    if (NotificationInbox.items.isEmpty()) {
                         Text("No readable active notifications.", color = Color.Gray)
                     } else {
                         Text(
-                            "Active notifications (" + notifications.size + ")",
+                            "Active notifications (" + NotificationInbox.items.size + ")",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        notifications.forEach { item ->
+                        NotificationInbox.items.forEach { item ->
                             NotificationPreviewRow(item) { openedNotification = item }
                         }
                     }
@@ -191,7 +162,6 @@ private fun AccountScreenContent(
         )
     }
 }
-
 
 @Composable
 private fun NotificationPreviewRow(item: NotificationPreview, onClick: () -> Unit) {
@@ -226,42 +196,5 @@ private fun NotificationPreviewRow(item: NotificationPreview, onClick: () -> Uni
                 Text(item.content, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Color.DarkGray)
             }
         }
-    }
-}
-
-// This preview displays the actual UI without requesting notification-listener access.
-@Preview(name = "Account - permission needed", showBackground = true)
-@Composable
-private fun AccountPermissionPreview() {
-    com.example.dna_mock.ui.theme.DNA_mockTheme {
-        AccountScreenContent(
-            hasAccess = false,
-            notifications = emptyList(),
-            onRequestPermission = {},
-            onManagePermission = {},
-            onRefresh = {}
-        )
-    }
-}
-
-@Preview(name = "Account - notifications enabled", showBackground = true)
-@Composable
-private fun AccountNotificationsPreview() {
-    com.example.dna_mock.ui.theme.DNA_mockTheme {
-        AccountScreenContent(
-            hasAccess = true,
-            notifications = listOf(
-                NotificationPreview(
-                    key = "preview-alert",
-                    appName = "Messages",
-                    title = "Security alert",
-                    content = "A suspicious link was sent to your number. Review before opening.",
-                    postedAt = 1783500000000L
-                )
-            ),
-            onRequestPermission = {},
-            onManagePermission = {},
-            onRefresh = {}
-        )
     }
 }
