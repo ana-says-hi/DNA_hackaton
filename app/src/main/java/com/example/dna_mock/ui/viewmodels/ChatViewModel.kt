@@ -1,4 +1,4 @@
-package com.example.dna_mock.ui.viewmodel
+package com.example.dna_mock.ui.viewmodels
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf

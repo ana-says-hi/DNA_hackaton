@@ -24,10 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.dna_mock.notifications.NotificationInbox
-import com.example.dna_mock.notifications.NotificationPreview
-import com.example.dna_mock.notifications.NotificationReaderService
-import com.example.dna_mock.notifications.isNotificationReaderEnabled
+import com.example.dna_mock.services.NotificationInbox
+import com.example.dna_mock.services.NotificationPreview
+import com.example.dna_mock.services.NotificationReaderService
+import com.example.dna_mock.services.isNotificationReaderEnabled
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
 import java.text.DateFormat
@@ -137,9 +137,9 @@ fun AccountScreen() {
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        NotificationInbox.items.forEach { item ->
-                            NotificationPreviewRow(item) { openedNotification = item }
-                        }
+//                        NotificationInbox.items.forEach { item ->
+//                            NotificationPreviewRow(item) { openedNotification = item }
+//                        }
                     }
                 }
             }

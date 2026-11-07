@@ -1,4 +1,4 @@
-package com.example.dna_mock.notifications
+package com.example.dna_mock.services
 
 import android.app.Notification
 import android.content.Context
@@ -8,6 +8,7 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.compose.runtime.mutableStateListOf
 import androidx.core.app.NotificationManagerCompat
+import com.example.dna_mock.NotificationRisk
 
 /** Temporary on-device previews only; nothing is written to disk or uploaded. */
 data class NotificationPreview(
@@ -15,7 +16,8 @@ data class NotificationPreview(
     val appName: String,
     val title: String,
     val content: String,
-    val postedAt: Long
+    val postedAt: Long,
+    val risk: NotificationRisk
 )
 
 object NotificationInbox {
@@ -24,6 +26,9 @@ object NotificationInbox {
         items.clear()
         items.addAll(next)
     }
+
+    fun suspiciousNotifications(): List<NotificationPreview> =
+        items.filter { it.risk == NotificationRisk.SUSPICIOUS }
 }
 
 fun isNotificationReaderEnabled(context: Context): Boolean =
@@ -36,6 +41,41 @@ class NotificationReaderService : NotificationListenerService() {
         fun refreshIfConnected() {
             connected?.refreshActiveNotifications()
         }
+    }
+
+    private fun refreshActiveNotifications() {
+        val active = runCatching { activeNotifications?.toList().orEmpty() }
+            .getOrDefault(emptyList())
+        val previews = active.asSequence()
+            .filter { it.packageName != packageName }
+            .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 }
+            .mapNotNull { it.asPreview() }
+            .sortedByDescending { it.postedAt }
+            .take(30)
+            .toList()
+        Handler(Looper.getMainLooper()).post { NotificationInbox.replace(previews) }
+    }
+
+    private fun StatusBarNotification.asPreview(): NotificationPreview? {
+        val extras = notification.extras ?: return null
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+        val content = (
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+                    ?: extras.getCharSequence(Notification.EXTRA_TEXT)
+                )?.toString()?.trim().orEmpty()
+        if (title.isBlank() && content.isBlank()) return null
+        val readableAppName = runCatching {
+            val app = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(app).toString()
+        }.getOrDefault(packageName)
+        return NotificationPreview(
+            key = key,
+            appName = readableAppName,
+            title = title.ifBlank { readableAppName }.take(120),
+            content = content.take(700),
+            postedAt = postTime,
+            risk = NotificationRisk.UNKNOWN
+        )
     }
 
     override fun onListenerConnected() {
@@ -62,39 +102,5 @@ class NotificationReaderService : NotificationListenerService() {
         if (connected === this) connected = null
         NotificationInbox.replace(emptyList())
         super.onDestroy()
-    }
-
-    private fun refreshActiveNotifications() {
-        val active = runCatching { activeNotifications?.toList().orEmpty() }
-            .getOrDefault(emptyList())
-        val previews = active.asSequence()
-            .filter { it.packageName != packageName }
-            .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 }
-            .mapNotNull { it.asPreview() }
-            .sortedByDescending { it.postedAt }
-            .take(30)
-            .toList()
-        Handler(Looper.getMainLooper()).post { NotificationInbox.replace(previews) }
-    }
-
-    private fun StatusBarNotification.asPreview(): NotificationPreview? {
-        val extras = notification.extras ?: return null
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-        val content = (
-            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-                ?: extras.getCharSequence(Notification.EXTRA_TEXT)
-            )?.toString()?.trim().orEmpty()
-        if (title.isBlank() && content.isBlank()) return null
-        val readableAppName = runCatching {
-            val app = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(app).toString()
-        }.getOrDefault(packageName)
-        return NotificationPreview(
-            key = key,
-            appName = readableAppName,
-            title = title.ifBlank { readableAppName }.take(120),
-            content = content.take(700),
-            postedAt = postTime
-        )
     }
 }

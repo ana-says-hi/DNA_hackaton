@@ -23,11 +23,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.dna_mock.notifications.NotificationInbox.items
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
-import com.example.dna_mock.ui.viewmodel.ChatMessage
-import com.example.dna_mock.ui.viewmodel.ChatViewModel
+import com.example.dna_mock.ui.viewmodels.ChatMessage
+import com.example.dna_mock.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
