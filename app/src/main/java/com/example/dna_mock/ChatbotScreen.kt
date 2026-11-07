@@ -1,54 +1,94 @@
 package com.example.dna_mock.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.dna_mock.data.ChatMessage
-import com.example.dna_mock.data.ChatService
+import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
+import com.example.dna_mock.ui.viewmodel.ChatMessage
+import com.example.dna_mock.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatbotScreen() {
-    val chatService = remember { ChatService() }
+fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val listState = rememberLazyListState()
 
-    var messages by remember { mutableStateOf(listOf(ChatMessage("Hello! How can I help you today?", false))) }
-    var inputText by remember { mutableStateOf("") }
-    var chatTitle by remember { mutableStateOf("New chat") }
+    LaunchedEffect(viewModel.messages.size) {
+        if (viewModel.messages.isNotEmpty()) {
+            listState.animateScrollToItem(viewModel.messages.size - 1)
+        }
+    }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    // Raw JSON Inspector Dialog
+    if (viewModel.isJsonDialogOpen) {
+        Dialog(onDismissRequest = { viewModel.dismissJsonDialog() }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .padding(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Raw JSON Response", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        IconButton(onClick = { viewModel.dismissJsonDialog() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = viewModel.selectedRawJson ?: "No JSON data",
+                                color = Color(0xFFD4D4D4),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = BackgroundColor
-            ) {
+            ModalDrawerSheet(drawerContainerColor = BackgroundColor) {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Chat History",
@@ -58,14 +98,10 @@ fun ChatbotScreen() {
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = BrandColor.copy(alpha = 0.1f))
                 NavigationDrawerItem(
-                    label = { Text("Previous Chat: Topup Help") },
+                    label = { Text("Previous Chat: Security Check") },
                     selected = false,
                     onClick = { scope.launch { drawerState.close() } },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = Color.Transparent,
-                        unselectedTextColor = BrandColor
-                    )
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
             }
         }
@@ -74,19 +110,13 @@ fun ChatbotScreen() {
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text(chatTitle, color = BackgroundColor) }, // Inverted text color
+                    title = { Text(viewModel.chatTitle, color = BackgroundColor) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "History",
-                                tint = BackgroundColor // Inverted icon color
-                            )
+                            Icon(Icons.Default.Menu, contentDescription = "History", tint = BackgroundColor)
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = BrandColor // Inverted ribbon background
-                    )
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BrandColor)
                 )
             },
             containerColor = BackgroundColor
@@ -105,8 +135,12 @@ fun ChatbotScreen() {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    items(messages) { message ->
-                        ChatBubble(message)
+                    items(viewModel.messages.size) { index ->
+                        val message = viewModel.messages[index]
+                        ChatBubble(
+                            message = message,
+                            onViewJsonClicked = { json -> viewModel.showRawJson(json) }
+                        )
                     }
                 }
 
@@ -119,16 +153,16 @@ fun ChatbotScreen() {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // Removed .imePadding() so it stays at the bottom
                             .navigationBarsPadding()
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextField(
-                            value = inputText,
-                            onValueChange = { inputText = it },
+                            value = viewModel.inputText,
+                            onValueChange = { viewModel.updateInputText(it) },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Type a message...") },
+                            placeholder = { Text("Describe security concern...") },
+                            textStyle = TextStyle(color = Color.Black),
                             shape = RoundedCornerShape(24.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
@@ -139,24 +173,7 @@ fun ChatbotScreen() {
                             )
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(
-                            onClick = {
-                                if (inputText.isNotBlank()) {
-                                    val userMsg = inputText
-                                    messages = messages + ChatMessage(userMsg, true)
-                                    inputText = ""
-
-                                    if (messages.size <= 2) {
-                                        chatTitle = if (userMsg.length > 15) userMsg.take(15) + "..." else userMsg
-                                    }
-
-                                    scope.launch {
-                                        val response = chatService.getResponse(userMsg)
-                                        messages = messages + ChatMessage(response, false)
-                                    }
-                                }
-                            }
-                        ) {
+                        IconButton(onClick = { viewModel.sendMessage() }) {
                             Icon(Icons.Default.Send, contentDescription = "Send", tint = BrandColor)
                         }
                     }
@@ -167,7 +184,7 @@ fun ChatbotScreen() {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
+fun ChatBubble(message: ChatMessage, onViewJsonClicked: (String) -> Unit) {
     val isUser = message.isUser
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -176,6 +193,7 @@ fun ChatBubble(message: ChatMessage) {
     ) {
         if (!isUser) ProfilePicture(isAI = true)
         Spacer(modifier = Modifier.width(8.dp))
+
         Surface(
             color = if (isUser) BrandColor else Color(0xFFE8E1E5),
             shape = RoundedCornerShape(
@@ -184,14 +202,44 @@ fun ChatBubble(message: ChatMessage) {
                 bottomStart = if (isUser) 16.dp else 0.dp,
                 bottomEnd = if (isUser) 0.dp else 16.dp
             ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier.widthIn(max = 300.dp)
         ) {
-            Text(
-                text = message.text,
-                modifier = Modifier.padding(12.dp),
-                color = if (isUser) Color.White else Color.Black,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = message.text,
+                    color = if (isUser) Color.White else Color.Black,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                if (!isUser && message.steps.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Recommended Steps:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = BrandColor)
+                    message.steps.forEach { step ->
+                        Text("• $step", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                    }
+                }
+
+                if (!isUser && message.questions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    message.questions.forEach { q ->
+                        Text("❓ $q", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = Color(0xFF5A2A68))
+                    }
+                }
+
+                if (!isUser && message.rawJson != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "{ } View Raw JSON",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandColor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { onViewJsonClicked(message.rawJson) }
+                            .padding(vertical = 4.dp)
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.width(8.dp))
         if (isUser) ProfilePicture(isAI = false)
