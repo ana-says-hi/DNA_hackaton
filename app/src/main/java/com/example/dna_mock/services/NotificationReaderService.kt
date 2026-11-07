@@ -29,6 +29,19 @@ object NotificationInbox {
 
     fun suspiciousNotifications(): List<NotificationPreview> =
         items.filter { it.risk == NotificationRisk.SUSPICIOUS }
+
+    fun updateRisk(
+        key: String,
+        risk: NotificationRisk
+    ) {
+        val index = items.indexOfFirst { it.key == key }
+
+        if (index != -1) {
+            items[index] = items[index].copy(
+                risk = risk
+            )
+        }
+    }
 }
 
 fun isNotificationReaderEnabled(context: Context): Boolean =
@@ -47,14 +60,18 @@ class NotificationReaderService : NotificationListenerService() {
         val active = runCatching { activeNotifications?.toList().orEmpty() }
             .getOrDefault(emptyList())
         val previews = active.asSequence()
-            .filter { it.packageName != packageName }
+            //.filter { it.packageName != packageName }  //commented for high risk demo
             .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 }
             .mapNotNull { it.asPreview() }
             .sortedByDescending { it.postedAt }
             .take(30)
             .toList()
-        Handler(Looper.getMainLooper()).post { NotificationInbox.replace(previews) }
-    }
+
+        val analysedNotifications = analyseNotifications(previews)
+
+        Handler(Looper.getMainLooper()).post {
+            NotificationInbox.replace(analysedNotifications)
+        }}
 
     private fun StatusBarNotification.asPreview(): NotificationPreview? {
         val extras = notification.extras ?: return null
@@ -74,7 +91,13 @@ class NotificationReaderService : NotificationListenerService() {
             title = title.ifBlank { readableAppName }.take(120),
             content = content.take(700),
             postedAt = postTime,
-            risk = NotificationRisk.UNKNOWN
+            risk = if (title.contains("Urgent", ignoreCase = true) ||
+                content.contains("Suspicious", ignoreCase = true) ||
+                content.contains("verify", ignoreCase = true)) {
+                NotificationRisk.SUSPICIOUS
+            } else {
+                NotificationRisk.UNKNOWN
+            }
         )
     }
 
@@ -102,5 +125,26 @@ class NotificationReaderService : NotificationListenerService() {
         if (connected === this) connected = null
         NotificationInbox.replace(emptyList())
         super.onDestroy()
+    }
+
+    private fun analyseNotifications(
+        notifications: List<NotificationPreview>
+    ): List<NotificationPreview> {
+
+        // TODO:
+        // Send these notifications to the AI service.
+        //
+        // The AI should determine whether each notification is:
+        // - SAFE
+        // - SUSPICIOUS
+        //
+        // Example future API:
+        //
+        // val analysed = chatService.analyseNotifications(notifications)
+        // return analysed
+        //
+        // For now, return the original list.
+
+        return notifications
     }
 }

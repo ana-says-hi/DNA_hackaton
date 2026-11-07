@@ -1,7 +1,12 @@
 package com.example.dna_mock.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,8 +27,10 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.dna_mock.DemoNotificationGenerator
 import com.example.dna_mock.services.NotificationInbox
 import com.example.dna_mock.services.NotificationPreview
 import com.example.dna_mock.services.NotificationReaderService
@@ -39,6 +46,59 @@ fun AccountScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasAccess by remember { mutableStateOf(isNotificationReaderEnabled(context)) }
     var openedNotification by remember { mutableStateOf<NotificationPreview?>(null) }
+
+    var notificationGranted by remember {
+        mutableStateOf(false)
+    }
+
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { granted ->
+
+            notificationGranted = granted
+        }
+
+
+    LaunchedEffect(Unit) {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+
+            if (
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+
+                notificationGranted = true
+
+            } else {
+
+                permissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+            }
+
+        } else {
+
+            notificationGranted = true
+        }
+    }
+
+
+    LaunchedEffect(notificationGranted) {
+
+        if (notificationGranted) {
+
+            kotlinx.coroutines.delay(10_000)
+
+            DemoNotificationGenerator
+                .showHighRiskNotification(context)
+        }
+    }
+
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -137,9 +197,14 @@ fun AccountScreen() {
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-//                        NotificationInbox.items.forEach { item ->
-//                            NotificationPreviewRow(item) { openedNotification = item }
-//                        }
+                        NotificationInbox
+                            .suspiciousNotifications()
+                            .forEach { item ->
+
+                                NotificationPreviewRow(item) {
+                                    openedNotification = item
+                                }
+                            }
                     }
                 }
             }
@@ -173,11 +238,16 @@ private fun NotificationPreviewRow(item: NotificationPreview, onClick: () -> Uni
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    item.appName,
-                    color = BrandColor,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.weight(1f)
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(item.risk.name)
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        disabledContainerColor = Color.Red,
+                        disabledLabelColor = Color.White
+                    )
                 )
                 Text(
                     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(item.postedAt)),

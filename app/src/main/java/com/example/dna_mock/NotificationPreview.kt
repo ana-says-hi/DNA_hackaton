@@ -1,5 +1,7 @@
 package com.example.dna_mock
 
+import android.graphics.Color
+
 enum class NotificationRisk {
     SAFE,
     SUSPICIOUS,
