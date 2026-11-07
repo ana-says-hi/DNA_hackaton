@@ -1,0 +1,100 @@
+package com.example.dna_mock.notifications
+
+import android.app.Notification
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import androidx.compose.runtime.mutableStateListOf
+import androidx.core.app.NotificationManagerCompat
+
+/** Temporary on-device previews only; nothing is written to disk or uploaded. */
+data class NotificationPreview(
+    val key: String,
+    val appName: String,
+    val title: String,
+    val content: String,
+    val postedAt: Long
+)
+
+object NotificationInbox {
+    val items = mutableStateListOf<NotificationPreview>()
+    fun replace(next: List<NotificationPreview>) {
+        items.clear()
+        items.addAll(next)
+    }
+}
+
+fun isNotificationReaderEnabled(context: Context): Boolean =
+    NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+/** Android only connects this service after the user opts in through system Settings. */
+class NotificationReaderService : NotificationListenerService() {
+    companion object {
+        private var connected: NotificationReaderService? = null
+        fun refreshIfConnected() {
+            connected?.refreshActiveNotifications()
+        }
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        connected = this
+        refreshActiveNotifications()
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        refreshActiveNotifications()
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        refreshActiveNotifications()
+    }
+
+    override fun onListenerDisconnected() {
+        if (connected === this) connected = null
+        NotificationInbox.replace(emptyList())
+        super.onListenerDisconnected()
+    }
+
+    override fun onDestroy() {
+        if (connected === this) connected = null
+        NotificationInbox.replace(emptyList())
+        super.onDestroy()
+    }
+
+    private fun refreshActiveNotifications() {
+        val active = runCatching { activeNotifications?.toList().orEmpty() }
+            .getOrDefault(emptyList())
+        val previews = active.asSequence()
+            .filter { it.packageName != packageName }
+            .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 }
+            .mapNotNull { it.asPreview() }
+            .sortedByDescending { it.postedAt }
+            .take(30)
+            .toList()
+        Handler(Looper.getMainLooper()).post { NotificationInbox.replace(previews) }
+    }
+
+    private fun StatusBarNotification.asPreview(): NotificationPreview? {
+        val extras = notification.extras ?: return null
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+        val content = (
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+                ?: extras.getCharSequence(Notification.EXTRA_TEXT)
+            )?.toString()?.trim().orEmpty()
+        if (title.isBlank() && content.isBlank()) return null
+        val readableAppName = runCatching {
+            val app = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(app).toString()
+        }.getOrDefault(packageName)
+        return NotificationPreview(
+            key = key,
+            appName = readableAppName,
+            title = title.ifBlank { readableAppName }.take(120),
+            content = content.take(700),
+            postedAt = postTime
+        )
+    }
+}
