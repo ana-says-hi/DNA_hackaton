@@ -5,53 +5,148 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.dna_mock.data.ChatService
+import com.example.dna_mock.ChatMessage
+import com.example.dna_mock.ChatResult
+import com.example.dna_mock.ConsentIn
+import com.example.dna_mock.SignalsInput
+import com.example.dna_mock.services.ChatService
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
-
-data class ChatMessage(
-    val text: String,
-    val isUser: Boolean,
-    val steps: List<String> = emptyList(),
-    val questions: List<String> = emptyList(),
-    val rawJson: String? = null
-)
 
 data class ChatHistoryItem(
     val id: String,
-    val title: String,
-    val messages: List<ChatMessage>
+    val title: String
 )
 
-class ChatViewModel : ViewModel() {
-    private val chatService = ChatService() // Connects to http://10.0.2.2:8000/
+class ChatViewModel(private val chatService: ChatService = ChatService()) : ViewModel() {
 
-    var conversationId by mutableStateOf(UUID.randomUUID().toString())
-        private set
+    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
-    var chatHistory by mutableStateOf(listOf<ChatHistoryItem>())
-        private set
-
-    var messages by mutableStateOf(listOf(ChatMessage("Hello! How can I help you today with your security check?", false)))
-        private set
-
+    // UI Input State
     var inputText by mutableStateOf("")
         private set
 
-    var chatTitle by mutableStateOf("New chat")
+    // TopAppBar & History State
+    var chatTitle by mutableStateOf("DNA Security Assistant")
+        private set
+
+    var conversationId by mutableStateOf("default_conv")
+        private set
+
+    var chatHistory by mutableStateOf<List<ChatHistoryItem>>(emptyList())
+        private set
+
+    // Raw JSON Dialog State
+    var isJsonDialogOpen by mutableStateOf(false)
         private set
 
     var selectedRawJson by mutableStateOf<String?>(null)
-        private set
-
-    var isJsonDialogOpen by mutableStateOf(false)
         private set
 
     fun updateInputText(newText: String) {
         inputText = newText
     }
 
-    fun showRawJson(json: String?) {
+    fun sendMessage() {
+        val messageText = inputText.trim()
+        if (messageText.isEmpty()) return
+
+        // 1. Add User Message
+        val userMsg = ChatMessage(text = messageText, isUser = true)
+        _messages.value = _messages.value + userMsg
+        inputText = ""
+
+        // 2. Call API
+        viewModelScope.launch {
+            val result: Result<ChatResult> = chatService.sendMessage(message = messageText)
+            result.onSuccess { chatResult ->
+                val response = chatResult.response
+                val answerPayload = response.answer
+
+                val aiMsg = ChatMessage(
+                    text = response.display_text,
+                    isUser = false,
+                    replyType = response.reply_type,
+                    steps = answerPayload?.steps ?: emptyList(),
+                    escalationRequired = answerPayload?.escalation_required ?: false,
+                    escalationTarget = answerPayload?.escalation_target,
+                    consentRequestedFor = answerPayload?.consent_requested_for ?: emptyList(),
+                    rawJson = chatResult.rawJson
+                )
+                _messages.value = _messages.value + aiMsg
+            }.onFailure { error: Throwable ->
+                val errorMsg = ChatMessage(
+                    text = "Error: ${error.localizedMessage ?: "Failed to connect to backend"}",
+                    isUser = false
+                )
+                _messages.value = _messages.value + errorMsg
+            }
+        }
+    }
+
+    fun sendConsent(granted: Boolean, requestedFor: List<String>) {
+        val consentInput = if (granted) {
+            ConsentIn(granted = requestedFor)
+        } else {
+            ConsentIn(refused = requestedFor)
+        }
+
+        val userText = if (granted) "Allowed access" else "Denied access"
+        _messages.value = _messages.value + ChatMessage(text = userText, isUser = true)
+
+        viewModelScope.launch {
+            val result: Result<ChatResult> = chatService.sendMessage(
+                message = if (granted) "yes" else "no",
+                consent = consentInput
+            )
+            result.onSuccess { chatResult ->
+                val response = chatResult.response
+                val answerPayload = response.answer
+
+                val aiMsg = ChatMessage(
+                    text = response.display_text,
+                    isUser = false,
+                    replyType = response.reply_type,
+                    steps = answerPayload?.steps ?: emptyList(),
+                    escalationRequired = answerPayload?.escalation_required ?: false,
+                    escalationTarget = answerPayload?.escalation_target,
+                    consentRequestedFor = answerPayload?.consent_requested_for ?: emptyList(),
+                    rawJson = chatResult.rawJson
+                )
+                _messages.value = _messages.value + aiMsg
+            }
+        }
+    }
+
+    fun talkToPerson(target: String?) {
+        val text = "Requesting agent support${target?.let { " ($it)" } ?: ""}"
+        _messages.value = _messages.value + ChatMessage(text = text, isUser = true)
+        _messages.value = _messages.value + ChatMessage(
+            text = "Connecting you to security specialist ${target ?: "support team"}...",
+            isUser = false
+        )
+    }
+
+    fun newChat() {
+        viewModelScope.launch {
+            chatService.resetSession()
+            _messages.value = emptyList()
+        }
+    }
+
+    fun clearChat() {
+        _messages.value = emptyList()
+    }
+
+    fun openChat(chat: ChatHistoryItem) {
+        conversationId = chat.id
+        chatTitle = chat.title
+    }
+
+    fun showRawJson(json: String) {
         selectedRawJson = json
         isJsonDialogOpen = true
     }
@@ -59,99 +154,5 @@ class ChatViewModel : ViewModel() {
     fun dismissJsonDialog() {
         isJsonDialogOpen = false
         selectedRawJson = null
-    }
-
-    private fun updateTitle(userMsg: String) {
-
-        if (chatTitle == "New chat") {
-
-            chatTitle =
-                if (userMsg.length > 15)
-                    userMsg.take(15) + "..."
-                else
-                    userMsg
-        }
-    }
-
-    fun sendMessage() {
-        val userMsg = inputText.trim()
-        if (userMsg.isBlank()) return
-
-        messages = messages + ChatMessage(userMsg, true)
-        inputText = ""
-        updateTitle(userMsg)
-
-        viewModelScope.launch {
-            val result = chatService.sendMessage(message = userMsg)
-            result.onSuccess { chatResult ->
-                val response = chatResult.parsedResponse
-
-                messages = messages + ChatMessage(
-                    text = response.advice_text,
-                    isUser = false,
-                    steps = response.steps,
-                    questions = response.questions_asked,
-                    rawJson = chatResult.rawJson
-                )
-            }.onFailure { error ->
-                messages = messages + ChatMessage(
-                    text = "Connection error: ${error.localizedMessage}",
-                    isUser = false
-                )
-            }
-        }
-    }
-
-    fun clearChat() {
-
-        messages = listOf(
-            ChatMessage(
-                text = "Hello! How can I help you today with your security check?",
-                isUser = false
-            )
-        )
-
-        chatTitle = "New chat"
-        inputText = ""
-    }
-
-    fun newChat() {
-        if (messages.size > 1) {
-
-            val oldChat = ChatHistoryItem(
-                id = conversationId,
-                title = chatTitle,
-                messages = messages
-            )
-            chatHistory = listOf(oldChat) + chatHistory
-        }
-
-        conversationId = UUID.randomUUID().toString()
-        messages = listOf(
-            ChatMessage(
-                text = "Hello! How can I help you today with your security check?",
-                isUser = false
-            )
-        )
-        chatTitle = "New chat"
-        inputText = ""
-    }
-
-    fun openChat(historyItem: ChatHistoryItem) {
-        if (messages.size > 1) {
-            val current = ChatHistoryItem(
-                id = conversationId,
-                title = chatTitle,
-                messages = messages
-            )
-            chatHistory =
-                listOf(current) + chatHistory.filter {
-                    it.id != current.id
-                }
-        }
-
-        conversationId = historyItem.id
-        messages = historyItem.messages
-        chatTitle = historyItem.title
     }
 }

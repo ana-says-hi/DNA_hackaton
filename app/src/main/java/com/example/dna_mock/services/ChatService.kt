@@ -1,5 +1,12 @@
-package com.example.dna_mock.data
+package com.example.dna_mock.services
 
+import com.example.dna_mock.ChatRequest
+import com.example.dna_mock.ChatResponse
+import com.example.dna_mock.ChatResult
+import com.example.dna_mock.ConsentIn
+import com.example.dna_mock.ResetRequest
+import com.example.dna_mock.ResetResponse
+import com.example.dna_mock.SignalsInput
 import com.google.gson.Gson
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -10,58 +17,14 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
-// --- Data Models required by the API ---
-
-data class ArtifactSignal(
-    val body: String? = "",
-    val sender: String? = ""
-)
-
-data class SignalsInput(
-    val artifact: ArtifactSignal? = null,
-    val link_check: Map<String, Any>? = null,
-    val subscription: Map<String, Any>? = null
-)
-
-data class ChatRequest(
-    val message: String,
-    val case_id: String? = null,
-    val language: String? = "auto",
-    val journey: String? = null,
-    val signals: SignalsInput? = null,
-    val use_gemini_fallback: Boolean = true
-)
-
-data class ChatResponse(
-    val case_id: String,
-    val language_used: String,
-    val risk_level: String,
-    val primary_action: String,
-    val advice_text: String,
-    val escalation_required: Boolean,
-    val escalation_target: String?,
-    val urgency: String,
-    val steps: List<String>,
-    val questions_asked: List<String>,
-    val question_topics: List<String>,
-    val signals_used: List<String>,
-    val consent_requested_for: List<String>,
-    val citations: List<String>,
-    val confidence: Float,
-    val abstained: Boolean,
-    val tier_used: String
-)
-
-data class ChatResult(
-    val parsedResponse: ChatResponse,
-    val rawJson: String
-)
-
 // --- Retrofit API Interface ---
 
 interface SecurityApi {
     @POST("api/chat")
     suspend fun sendChatMessage(@Body request: ChatRequest): Response<ChatResponse>
+
+    @POST("api/reset")
+    suspend fun resetSession(@Body request: ResetRequest): Response<ResetResponse>
 }
 
 // --- Chat Service Implementation ---
@@ -69,6 +32,7 @@ interface SecurityApi {
 class ChatService(baseUrl: String = "http://10.20.1.234:8000/") {
 
     private val gson = Gson()
+    private var currentSessionId: String? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -86,29 +50,58 @@ class ChatService(baseUrl: String = "http://10.20.1.234:8000/") {
         .create(SecurityApi::class.java)
 
     /**
-     * Sends a message to the backend and returns both the parsed object and raw JSON string.
+     * Sends a chat message to api_server.py.
+     * Automatically keeps track of session_id across chat turns.
      */
     suspend fun sendMessage(
         message: String,
-        language: String? = "auto",
-        journey: String? = null
+        language: String? = null,
+        journey: String? = null,
+        signals: SignalsInput? = null,
+        consent: ConsentIn? = null,
+        reset: Boolean = false
     ): Result<ChatResult> {
         return try {
             val request = ChatRequest(
                 message = message,
+                session_id = if (reset) null else currentSessionId,
+                reset = reset,
                 language = language,
-                journey = journey
+                journey = journey,
+                signals = signals,
+                consent = consent
             )
 
             val response = api.sendChatMessage(request)
 
             if (response.isSuccessful && response.body() != null) {
                 val chatResponse = response.body()!!
-                val rawJsonString = gson.toJson(chatResponse)
 
+                // Persist session_id across turns
+                currentSessionId = chatResponse.session_id
+
+                val rawJsonString = gson.toJson(chatResponse)
                 Result.success(ChatResult(chatResponse, rawJsonString))
             } else {
                 Result.failure(Exception("Server error: ${response.errorBody()?.string() ?: response.message()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Resets the active session on the backend.
+     */
+    suspend fun resetSession(): Result<Boolean> {
+        val sessionIdToReset = currentSessionId ?: return Result.success(true)
+        return try {
+            val response = api.resetSession(ResetRequest(sessionIdToReset))
+            if (response.isSuccessful && response.body()?.ok == true) {
+                currentSessionId = null
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Failed to reset session"))
             }
         } catch (e: Exception) {
             Result.failure(e)

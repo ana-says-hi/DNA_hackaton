@@ -16,16 +16,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dna_mock.ChatMessage
 import com.example.dna_mock.ui.theme.BackgroundColor
 import com.example.dna_mock.ui.theme.BrandColor
-import com.example.dna_mock.ui.viewmodels.ChatMessage
 import com.example.dna_mock.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -37,9 +36,11 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
     val listState = rememberLazyListState()
     var menuExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(viewModel.messages.size) {
-        if (viewModel.messages.isNotEmpty()) {
-            listState.animateScrollToItem(viewModel.messages.size - 1)
+    val messages by viewModel.messages.collectAsState()
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
         }
     }
 
@@ -92,9 +93,7 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
             ModalDrawerSheet(
                 drawerContainerColor = BackgroundColor
             ) {
-                Spacer(
-                    Modifier.height(12.dp)
-                )
+                Spacer(Modifier.height(12.dp))
                 Text(
                     "Chat History",
                     modifier = Modifier.padding(16.dp),
@@ -114,32 +113,14 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
                 } else {
                     viewModel.chatHistory.forEach { chat ->
                         NavigationDrawerItem(
-                            label = {
-                                Text(
-                                    text = chat.title,
-                                    maxLines = 1
-                                )
-                            },
-
+                            label = { Text(text = chat.title, maxLines = 1) },
                             selected = chat.id == viewModel.conversationId,
-
                             onClick = {
                                 viewModel.openChat(chat)
-                                scope.launch {
-                                    drawerState.close()
-                                }
+                                scope.launch { drawerState.close() }
                             },
-
-                            modifier = Modifier.padding(
-                                NavigationDrawerItemDefaults.ItemPadding
-                            ),
-
-                            icon = {
-                                Icon(
-                                    Icons.Default.Chat,
-                                    contentDescription = null
-                                )
-                            }
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                            icon = { Icon(Icons.Default.Chat, contentDescription = null) }
                         )
                     }
                 }
@@ -150,82 +131,39 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            viewModel.chatTitle,
-                            color = BackgroundColor
-                        )
-                    },
+                    title = { Text(text = viewModel.chatTitle, color = BackgroundColor) },
                     navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    drawerState.open()
-                                }
-                            }
-                        ) {
-
-                            Icon(
-                                Icons.Default.Menu,
-                                contentDescription = "History",
-                                tint = BackgroundColor
-                            )
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "History", tint = BackgroundColor)
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                menuExpanded = true
-                            }
-                        ) {
-
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Options",
-                                tint = BackgroundColor
-                            )
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = BackgroundColor)
                         }
                         DropdownMenu(
                             expanded = menuExpanded,
-                            onDismissRequest = {
-                                menuExpanded = false
-                            }
+                            onDismissRequest = { menuExpanded = false }
                         ) {
                             DropdownMenuItem(
                                 text = { Text("New Chat") },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Add,
-                                        contentDescription = null
-                                    )
-                                },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
                                     viewModel.newChat()
                                 }
                             )
                             DropdownMenuItem(
-
-                                text = {
-                                    Text("Clear Chat")
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = null
-                                    )
-                                },
+                                text = { Text("Clear Chat") },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
                                     viewModel.clearChat()
                                 }
                             )
-
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = BrandColor
-                    )
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BrandColor)
                 )
             },
             containerColor = BackgroundColor
@@ -244,10 +182,12 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    items(viewModel.messages.size) { index ->
-                        val message = viewModel.messages[index]
+                    items(messages.size) { index ->
+                        val message = messages[index]
                         ChatBubble(
                             message = message,
+                            onConsentClick = { granted -> viewModel.sendConsent(granted, message.consentRequestedFor) },
+                            onEscalateClick = { viewModel.talkToPerson(message.escalationTarget) },
                             onViewJsonClicked = { json -> viewModel.showRawJson(json) }
                         )
                     }
@@ -293,8 +233,14 @@ fun ChatbotScreen(viewModel: ChatViewModel = viewModel()) {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage, onViewJsonClicked: (String) -> Unit) {
+fun ChatBubble(
+    message: ChatMessage,
+    onConsentClick: (Boolean) -> Unit,
+    onEscalateClick: () -> Unit,
+    onViewJsonClicked: (String) -> Unit
+) {
     val isUser = message.isUser
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -311,30 +257,73 @@ fun ChatBubble(message: ChatMessage, onViewJsonClicked: (String) -> Unit) {
                 bottomStart = if (isUser) 16.dp else 0.dp,
                 bottomEnd = if (isUser) 0.dp else 16.dp
             ),
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
+                // Display text for every reply
                 Text(
                     text = message.text,
                     color = if (isUser) Color.White else Color.Black,
                     style = MaterialTheme.typography.bodyMedium
                 )
 
+                // Consent Request UI: Allow / Don't allow buttons
+                if (!isUser && message.replyType == "consent_request") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { onConsentClick(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Allow", color = Color.White)
+                        }
+                        OutlinedButton(
+                            onClick = { onConsentClick(false) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Don't allow", color = Color.Black)
+                        }
+                    }
+                }
+
+                // Final Answer Steps UI: Checklist
                 if (!isUser && message.steps.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Recommended Steps:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = BrandColor)
-                    message.steps.forEach { step ->
-                        Text("• $step", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        "Action Steps:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandColor
+                    )
+                    message.steps.forEach { stepText ->
+                        ChecklistStepItem(stepText = stepText)
                     }
                 }
 
-                if (!isUser && message.questions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    message.questions.forEach { q ->
-                        Text("❓ $q", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = Color(0xFF5A2A68))
+                // Escalation Required UI: "Talk to a person" button
+                if (!isUser && message.escalationRequired) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onEscalateClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SupportAgent,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Talk to a person", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
+                // Raw JSON Inspector Trigger
                 if (!isUser && message.rawJson != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -356,6 +345,32 @@ fun ChatBubble(message: ChatMessage, onViewJsonClicked: (String) -> Unit) {
 }
 
 @Composable
+fun ChecklistStepItem(stepText: String) {
+    var checked by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { checked = !checked }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { checked = it },
+            colors = CheckboxDefaults.colors(checkedColor = BrandColor)
+        )
+        Text(
+            text = stepText,
+            style = MaterialTheme.typography.bodySmall.copy(
+                textDecoration = if (checked) TextDecoration.LineThrough else TextDecoration.None
+            ),
+            color = if (checked) Color.Gray else Color.DarkGray
+        )
+    }
+}
+
+@Composable
 fun ProfilePicture(isAI: Boolean) {
     Box(
         modifier = Modifier
@@ -371,10 +386,4 @@ fun ProfilePicture(isAI: Boolean) {
             modifier = Modifier.size(20.dp)
         )
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ChatbotScreenPreview() {
-    ChatbotScreen()
 }
